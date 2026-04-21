@@ -1,6 +1,4 @@
-streamlit
-numpy
-pandasfrom pathlib import Path
+ import Path
 import pickle
 
 import pandas as pd
