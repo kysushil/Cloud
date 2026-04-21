@@ -1,0 +1,101 @@
+streamlit
+numpy
+pandasfrom pathlib import Path
+import pickle
+
+import pandas as pd
+import streamlit as st
+from sklearn.linear_model import LogisticRegression
+from sklearn.metrics import accuracy_score
+from sklearn.model_selection import train_test_split
+from sklearn.pipeline import Pipeline
+from sklearn.preprocessing import StandardScaler
+
+
+DATA_PATH = Path(__file__).with_name("smart_manufacturing_data.csv")
+MODEL_PATH = Path(__file__).with_name("model1.pkl")
+TARGET_COL = "maintenance_required"
+
+
+def prepare_features(df: pd.DataFrame) -> tuple[pd.DataFrame, pd.Series]:
+    drop_cols = ["timestamp", "failure_type", "downtime_risk", "machine_id", TARGET_COL]
+    X = df.drop(columns=drop_cols, errors="ignore").copy()
+    y = df[TARGET_COL]
+    return X, y
+
+
+def train_and_save_model(df: pd.DataFrame) -> dict:
+    X, y = prepare_features(df)
+
+    X_train, X_test, y_train, y_test = train_test_split(
+        X, y, test_size=0.3, random_state=42, stratify=y
+    )
+
+    pipeline = Pipeline(
+        [
+            ("scaler", StandardScaler()),
+            ("model", LogisticRegression(max_iter=1000, random_state=42)),
+        ]
+    )
+    pipeline.fit(X_train, y_train)
+
+    y_pred = pipeline.predict(X_test)
+    acc = accuracy_score(y_test, y_pred)
+
+    model_artifact = {
+        "pipeline": pipeline,
+        "columns": list(X.columns),
+        "target": TARGET_COL,
+        "accuracy": float(acc),
+    }
+
+    with open(MODEL_PATH, "wb") as f:
+        pickle.dump(model_artifact, f)
+
+    return model_artifact
+
+
+def load_or_create_model(df: pd.DataFrame) -> dict:
+    if MODEL_PATH.exists():
+        with open(MODEL_PATH, "rb") as f:
+            artifact = pickle.load(f)
+        if isinstance(artifact, dict) and "pipeline" in artifact and "columns" in artifact:
+            return artifact
+
+    return train_and_save_model(df)
+
+
+st.title("Smart Manufacturing Maintenance Prediction")
+st.write("This app uses your local dataset and stores the trained model as model1.pkl.")
+
+if not DATA_PATH.exists():
+    st.error(f"Dataset not found: {DATA_PATH}")
+    st.stop()
+
+df = pd.read_csv(DATA_PATH)
+artifact = load_or_create_model(df)
+pipeline = artifact["pipeline"]
+columns = artifact["columns"]
+
+st.caption(f"Model file: {MODEL_PATH.name}")
+st.caption(f"Validation accuracy: {artifact.get('accuracy', 0.0):.4f}")
+
+st.subheader("Enter sensor values")
+X_full, _ = prepare_features(df)
+defaults = X_full.median(numeric_only=True)
+
+user_input = {}
+for col in columns:
+    default_val = float(defaults[col]) if col in defaults else 0.0
+    user_input[col] = st.number_input(col, value=default_val)
+
+if st.button("Predict"):
+    input_df = pd.DataFrame([user_input], columns=columns)
+    pred = int(pipeline.predict(input_df)[0])
+    label = "Maintenance Required" if pred == 1 else "No Maintenance Required"
+    st.success(f"Prediction: {label} ({pred})")
+
+st.subheader("Dataset Preview")
+st.dataframe(df.head())
+scikit-learn
+kagglehub
