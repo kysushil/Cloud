@@ -1,4 +1,4 @@
-import Path
+from pathlib import Path
 import pickle
 
 import pandas as pd
